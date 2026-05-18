@@ -2281,6 +2281,23 @@ void swipe_begin(struct wl_listener *listener, void *data) {
 void swipe_update(struct wl_listener *listener, void *data) {
 	struct wlr_pointer_swipe_update_event *event = data;
 
+	if (selmon && is_canvas_layout(selmon) && event->fingers >= 4) {
+		uint32_t tag = selmon->pertag->curtag;
+		float old_zoom = selmon->pertag->canvas_zoom[tag];
+		float new_zoom = CLAMP_FLOAT(old_zoom - (float) (event->dy / -500.0) , 0.1f, 1.0f);
+		selmon->pertag->canvas_zoom[tag] = new_zoom;
+
+		float cursor_sx = (float)(cursor->x - selmon->w.x);
+		float cursor_sy = (float)(cursor->y - selmon->w.y);
+		selmon->pertag->canvas_pan_x[tag] +=
+			cursor_sx * (1.0f / old_zoom - 1.0f / new_zoom);
+		selmon->pertag->canvas_pan_y[tag] +=
+			cursor_sy * (1.0f / old_zoom - 1.0f / new_zoom);
+
+		canvas_reposition(selmon);
+		return;
+	}
+
 	if (canvas_swipe_panning && selmon && is_canvas_layout(selmon)) {
 		uint32_t tag = selmon->pertag->curtag;
 		float zoom = selmon->pertag->canvas_zoom[tag];
@@ -2322,9 +2339,6 @@ void pinch_begin(struct wl_listener *listener, void *data) {
 	// Forward pinch begin event to client
 	pinch_last_scale = 1.0;
 
-	if (selmon && is_canvas_layout(selmon))
-		return;
-
 	wlr_pointer_gestures_v1_send_pinch_begin(pointer_gestures, seat,
 											 event->time_msec, event->fingers);
 }
@@ -2332,27 +2346,6 @@ void pinch_begin(struct wl_listener *listener, void *data) {
 void pinch_update(struct wl_listener *listener, void *data) {
 	struct wlr_pointer_pinch_update_event *event = data;
 
-	if (selmon && is_canvas_layout(selmon)) {
-		uint32_t tag = selmon->pertag->curtag;
-		float old_zoom = selmon->pertag->canvas_zoom[tag];
-
-		double ratio =
-			(pinch_last_scale > 0.0) ? event->scale / pinch_last_scale : 1.0;
-		pinch_last_scale = event->scale;
-
-		float new_zoom = CLAMP_FLOAT(old_zoom * (float)ratio, 0.1f, 1.0f);
-		selmon->pertag->canvas_zoom[tag] = new_zoom;
-
-		float cursor_sx = (float)(cursor->x - selmon->w.x);
-		float cursor_sy = (float)(cursor->y - selmon->w.y);
-		selmon->pertag->canvas_pan_x[tag] +=
-			cursor_sx * (1.0f / old_zoom - 1.0f / new_zoom);
-		selmon->pertag->canvas_pan_y[tag] +=
-			cursor_sy * (1.0f / old_zoom - 1.0f / new_zoom);
-
-		canvas_reposition(selmon);
-		return;
-	}
 
 	wlr_pointer_gestures_v1_send_pinch_update(
 		pointer_gestures, seat, event->time_msec, event->dx, event->dy,
